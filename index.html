@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>九宮飛星</title>
+    <style>
+        :root {
+            --bg: #0f0e0c; 
+            --gold: #f5c767; 
+            --green: #5cd0aa; 
+            --red: #ff5757;
+            --text: #ffffff; 
+            --water: #6eb5f9; 
+            --metal: #e6e6e6; 
+            --earth: #cca45e;
+            --border: rgba(245, 199, 103, 0.7);
+            --panel-bg: rgba(15, 14, 12, 0.9);
+            --text-glow: 0px 0px 4px rgba(0,0,0,0.8);
+        }
+        body.light-mode {
+            --bg: #f4ebd8; 
+            --gold: #b38531; 
+            --green: #1a8a63; 
+            --red: #d12828;
+            --text: #111111; 
+            --water: #1d6aa3; 
+            --metal: #444444; 
+            --earth: #8a652e;
+            --border: rgba(179, 133, 49, 0.7);
+            --panel-bg: rgba(244, 235, 216, 0.9);
+            --text-glow: 0px 0px 4px rgba(255,255,255,0.8);
+        }
+        body {
+            background-color: var(--bg); color: var(--text);
+            font-family: "PingFang TC", "Microsoft JhengHei", monospace;
+            margin: 0; overflow: hidden;
+            display: flex; flex-direction: column; height: 100vh;
+        }
+
+        .top-nav {
+            display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 15px;
+            padding: 15px; background: var(--panel-bg); border-bottom: 1px solid var(--border);
+            z-index: 100;
+        }
+        
+        .nav-group { display: flex; gap: 10px; align-items: center; }
+
+        .btn {
+            background: transparent; color: var(--gold);
+            border: 1px solid var(--gold); padding: 8px 16px; cursor: pointer;
+            border-radius: 6px; font-size: 14px; transition: all 0.2s; white-space: nowrap;
+        }
+        .btn:active { transform: scale(0.95); }
+        .btn-danger { border-color: var(--red); color: var(--red); }
+        
+        .year-input {
+            background: transparent; border: 1px solid var(--gold); border-radius: 6px;
+            color: var(--gold); text-align: center; font-size: 16px; width: 70px; padding: 7px; outline: none;
+        }
+
+        .workspace {
+            position: relative; flex: 1; width: 100vw; overflow: hidden;
+            display: flex; align-items: center; justify-content: center;
+            touch-action: none;
+        }
+
+        #floorPlan {
+            position: absolute; transform-origin: center center;
+            transition: opacity 0.3s; pointer-events: none; opacity: 0.6;
+        }
+
+        #compassSvg {
+            position: absolute; width: 85vmin; height: 85vmin; max-width: 700px; max-height: 700px;
+            pointer-events: none; transition: opacity 0.3s, transform 0.05s linear;
+        }
+
+        .theme-toggle-container {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 100;
+        }
+
+        .theme-toggle {
+            width: 45px; height: 45px; border-radius: 50%;
+            border: 1px solid var(--gold); background: var(--panel-bg);
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            color: var(--gold); font-size: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        #fileInput { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="top-nav">
+    <div class="nav-group">
+        <span style="color:var(--gold); font-size:14px;">流年</span>
+        <input type="number" id="yearInput" class="year-input" value="2026" onchange="renderCompass()">
+        <span id="periodLabel" style="color:var(--gold); font-size:14px; font-weight:bold;">(下元九運)</span>
+    </div>
+    <div class="nav-group">
+        <button class="btn" onclick="document.getElementById('fileInput').click()">上傳底圖</button>
+        <button class="btn btn-danger" onclick="clearMap()">清除底圖</button>
+    </div>
+    <input type="file" id="fileInput" accept="image/*" onchange="handleImage(event)">
+</div>
+
+<div class="workspace" id="workspace">
+    <img id="floorPlan" src="" style="display:none;" draggable="false">
+    <svg id="compassSvg" viewBox="0 0 600 600">
+        <g id="compassGroup" transform="rotate(0, 300, 300)">
+            <circle cx="300" cy="300" r="280" fill="transparent" stroke="var(--gold)" stroke-width="1.5" stroke-dasharray="2,4"/>
+            <circle cx="300" cy="300" r="240" fill="transparent" stroke="var(--border)" stroke-width="1"/>
+            <circle cx="300" cy="300" r="80" fill="transparent" stroke="var(--border)" stroke-width="2"/>
+            <g id="sectorsLayer" style="text-shadow: var(--text-glow);"></g>
+        </g>
+        <circle id="northResetBtn" cx="300" cy="8" r="8" fill="var(--red)" style="cursor: pointer; pointer-events: auto;" onpointerdown="resetCompass(event)"/>
+    </svg>
+</div>
+
+<div class="theme-toggle-container">
+    <button class="theme-toggle" onclick="document.body.classList.toggle('light-mode')">◑</button>
+</div>
+
+<script>
+    const stars = [
+        { n: 1, name: "一白水", c: "var(--water)" },
+        { n: 2, name: "二黑土", c: "var(--earth)" },
+        { n: 3, name: "三碧木", c: "var(--green)" },
+        { n: 4, name: "四綠木", c: "var(--green)" },
+        { n: 5, name: "五黃土", c: "var(--earth)" },
+        { n: 6, name: "六白金", c: "var(--metal)" },
+        { n: 7, name: "七赤金", c: "var(--metal)" },
+        { n: 8, name: "八白土", c: "var(--earth)" },
+        { n: 9, name: "九紫火", c: "var(--red)" }
+    ];
+    
+    // 星曜本位特質 (不隨時間改變)
+    const starMeanings = [
+        "", "桃花名聲", "疾病田產", "是非官訟", "文昌學業", 
+        "災禍血光", "權威驛馬", "盜賊口舌", "財富置產", "喜慶升遷"
+    ];
+
+    const dirs = ["正北", "東北", "正東", "東南", "正南", "西南", "正西", "西北"];
+    const offsets = [5, 3, 7, 8, 4, 6, 2, 1];
+
+    let state = { mode: 'compass', compassRot: 0, map: { x: 0, y: 0, scale: 1, rot: 0 }, startAngle: 0 };
+
+    function toggleView() {
+        state.mode = state.mode === 'compass' ? 'map' : 'compass';
+        document.getElementById('compassSvg').style.opacity = state.mode === 'compass' ? '1' : '0.3';
+        document.getElementById('floorPlan').style.opacity = state.mode === 'map' ? '1' : '0.6';
+        renderCompass();
+    }
+
+    window.resetCompass = function(e) {
+        e.stopPropagation();
+        state.compassRot = 0;
+        document.getElementById('compassGroup').setAttribute('transform', `rotate(0, 300, 300)`);
+    };
+
+    // 三元九運計算器 (1864為上元一運)
+    function getPeriodInfo(year) {
+        let offset = year - 1864;
+        offset = ((offset % 180) + 180) % 180; // 處理負數年份
+        let period = Math.floor(offset / 20) + 1;
+        let cycle = period <= 3 ? "上元" : period <= 6 ? "中元" : "下元";
+        const numMap = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+        return { period: period, label: `${cycle}${numMap[period]}運` };
+    }
+
+    // 動態旺衰計算
+    function getDynamicStatus(star, currentPeriod) {
+        const diff = (star - currentPeriod + 9) % 9;
+        let status = "";
+        let isDanger = false;
+
+        if (diff === 0) status = "當旺";
+        else if (diff === 1) status = "生氣";
+        else if (diff === 2) status = "進氣";
+        else if (diff === 8) status = "退氣";
+        else if (diff === 7) status = "衰氣";
+        else if (star === 5) { status = "大煞"; isDanger = true; } // 五黃失令必為大煞
+        else if (diff === 3 || diff === 4) status = "死氣";
+        else { status = "煞氣"; isDanger = true; } // 距離最遠的星曜
+
+        return { text: `${status} - ${starMeanings[star]}`, isDanger: isDanger };
+    }
+
+    function renderCompass() {
+        const year = parseInt(document.getElementById('yearInput').value);
+        
+        // 取得流年對應的「入中宮星」與「大運」
+        let centerStar = (10 - ((year - 1900) % 9)) % 9 || 9;
+        let periodInfo = getPeriodInfo(year);
+        
+        // 更新上方標籤
+        document.getElementById('periodLabel').innerText = `(${periodInfo.label})`;
+
+        const layer = document.getElementById('sectorsLayer');
+        layer.innerHTML = '';
+
+        const cS = stars[centerStar - 1];
+        layer.innerHTML += `<text x="300" y="285" fill="${cS.c}" font-size="42" text-anchor="middle" font-weight="bold">${cS.n}</text>`;
+        layer.innerHTML += `<text x="300" y="315" fill="${cS.c}" font-size="18" text-anchor="middle">${cS.name}</text>`;
+        
+        const toggleText = state.mode === 'compass' ? "切換底圖" : "切換圓盤";
+        layer.innerHTML += `<rect x="255" y="335" width="90" height="26" rx="13" fill="var(--panel-bg)" stroke="var(--gold)" opacity="0.8"/>`;
+        layer.innerHTML += `<text x="300" y="353" fill="var(--gold)" font-size="14" text-anchor="middle" font-weight="bold">${toggleText}</text>`;
+
+        for (let i = 0; i < 8; i++) {
+            let angle = i * 45;
+            let rad = (angle - 22.5) * Math.PI / 180;
+            layer.innerHTML += `<line x1="${300+80*Math.sin(rad)}" y1="${300-80*Math.cos(rad)}" x2="${300+280*Math.sin(rad)}" y2="${300-280*Math.cos(rad)}" stroke="var(--border)" stroke-width="1.5"/>`;
+
+            let starNum = (centerStar + offsets[i] - 1) % 9 + 1;
+            const sD = stars[starNum - 1];
+            
+            // 取得該星在目前大運的吉凶狀態
+            const dynamicStatus = getDynamicStatus(starNum, periodInfo.period);
+
+            layer.innerHTML += `
+                <g transform="rotate(${angle}, 300, 300)">
+                    <text x="300" y="46" fill="${dynamicStatus.isDanger ? 'var(--red)' : 'var(--gold)'}" 
+                          font-size="14" text-anchor="middle" font-weight="${dynamicStatus.isDanger ? 'bold' : 'normal'}" opacity="0.95">
+                          [ ${dynamicStatus.text} ]
+                    </text>
+                    <text x="300" y="85" fill="var(--gold)" font-size="18" text-anchor="middle" font-weight="bold">${dirs[i]}</text>
+                    <text x="300" y="145" fill="${sD.c}" font-size="56" text-anchor="middle" font-weight="bold">${sD.n}</text>
+                    <text x="300" y="190" fill="${sD.c}" font-size="20" text-anchor="middle" font-weight="bold">${sD.name}</text>
+                </g>`;
+        }
+    }
+
+    // 拖曳與影像處理邏輯保持不變...
+    function handleImage(e) {
+        if (!e.target.files[0]) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const img = document.getElementById('floorPlan');
+            img.src = event.target.result;
+            img.style.display = 'block';
+            state.map = { x: 0, y: 0, scale: 1, rot: 0 };
+            updateMap();
+            if(state.mode === 'compass') toggleView();
+        };
+        reader.readAsDataURL(e.target.files[0]);
+    }
+
+    function clearMap() {
+        const img = document.getElementById('floorPlan');
+        img.src = ''; img.style.display = 'none';
+        document.getElementById('fileInput').value = '';
+        state.map = { x: 0, y: 0, scale: 1, rot: 0 };
+    }
+
+    function updateMap() {
+        document.getElementById('floorPlan').style.transform = `translate(calc(-50% + ${state.map.x}px), calc(-50% + ${state.map.y}px)) rotate(${state.map.rot}deg) scale(${state.map.scale})`;
+    }
+
+    function snapAngle(angle, threshold = 5) {
+        let normalized = ((angle % 360) + 360) % 360; 
+        const targets = [0, 90, 180, 270, 360];
+        for (let t of targets) if (Math.abs(normalized - t) <= threshold) return t === 360 ? 0 : t;
+        return angle;
+    }
+
+    const ws = document.getElementById('workspace');
+    let pointers = [];
+    let initialPinchDist = null, initialPinchAngle = null, initialMapScale = 1, initialMapRot = 0, isClick = false;
+
+    ws.addEventListener('pointerdown', (e) => {
+        ws.setPointerCapture(e.pointerId);
+        pointers.push(e);
+        isClick = true;
+        if (pointers.length === 1) {
+            state.lastX = e.clientX; state.lastY = e.clientY;
+            const rect = ws.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+            const currentAngle = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI;
+            state.startAngle = (state.mode === 'compass') ? (currentAngle - state.compassRot) : (e.shiftKey ? currentAngle - state.map.rot : 0);
+        } else if (pointers.length === 2 && state.mode === 'map') {
+            isClick = false;
+            let p1 = pointers[0], p2 = pointers[1];
+            initialPinchDist = Math.hypot(p2.clientX - p1.clientX, p2.clientY - p1.clientY);
+            initialPinchAngle = Math.atan2(p2.clientY - p1.clientY, p2.clientX - p1.clientX) * 180 / Math.PI;
+            initialMapScale = state.map.scale; initialMapRot = state.map.rot;
+        }
+    });
+
+    ws.addEventListener('pointermove', (e) => {
+        const index = pointers.findIndex(p => p.pointerId === e.pointerId);
+        if (index !== -1) pointers[index] = e;
+        if (pointers.length === 1) {
+            if (Math.hypot(e.clientX - state.lastX, e.clientY - state.lastY) > 5) isClick = false;
+            const rect = ws.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+            if (state.mode === 'compass') {
+                state.compassRot = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI - state.startAngle;
+                document.getElementById('compassGroup').setAttribute('transform', `rotate(${state.compassRot}, 300, 300)`);
+            } else if (!isClick) {
+                if (e.shiftKey) {
+                    state.map.rot = snapAngle(Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI - state.startAngle);
+                } else {
+                    state.map.x += (e.clientX - state.lastX); state.map.y += (e.clientY - state.lastY);
+                    state.lastX = e.clientX; state.lastY = e.clientY;
+                }
+                updateMap();
+            }
+        } else if (pointers.length === 2 && state.mode === 'map') {
+            let p1 = pointers[0], p2 = pointers[1];
+            let currentDist = Math.hypot(p2.clientX - p1.clientX, p2.clientY - p1.clientY);
+            let currentAngle = Math.atan2(p2.clientY - p1.clientY, p2.clientX - p1.clientX) * 180 / Math.PI;
+            state.map.scale = Math.max(0.1, initialMapScale * (currentDist / initialPinchDist));
+            state.map.rot = snapAngle(initialMapRot + (currentAngle - initialPinchAngle));
+            updateMap();
+        }
+    });
+
+    const removePointer = (e) => {
+        if (isClick && pointers.length === 1) {
+            const rect = ws.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+            const dist = Math.hypot(e.clientX - cx, e.clientY - cy);
+            const scale = document.getElementById('compassSvg').getBoundingClientRect().width / 600; 
+            if (dist <= 80 * scale) toggleView();
+        }
+        pointers = pointers.filter(p => p.pointerId !== e.pointerId);
+        if (ws.hasPointerCapture(e.pointerId)) ws.releasePointerCapture(e.pointerId);
+    };
+
+    ws.addEventListener('pointerup', removePointer);
+    ws.addEventListener('pointercancel', removePointer);
+    ws.addEventListener('wheel', (e) => {
+        if (state.mode === 'map') {
+            e.preventDefault();
+            state.map.scale *= (e.deltaY > 0 ? 0.95 : 1.05);
+            updateMap();
+        }
+    }, { passive: false });
+
+    renderCompass();
+</script>
+</body>
+</html>
