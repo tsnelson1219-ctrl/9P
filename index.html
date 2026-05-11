@@ -2,31 +2,19 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>九宮飛星</title>
     <style>
         :root {
-            --bg: #0f0e0c; 
-            --gold: #f5c767; 
-            --green: #5cd0aa; 
-            --red: #ff5757;
-            --text: #ffffff; 
-            --water: #6eb5f9; 
-            --metal: #e6e6e6; 
-            --earth: #cca45e;
+            --bg: #0f0e0c; --gold: #f5c767; --green: #5cd0aa; --red: #ff5757;
+            --text: #ffffff; --water: #6eb5f9; --metal: #e6e6e6; --earth: #cca45e;
             --border: rgba(245, 199, 103, 0.7);
             --panel-bg: rgba(15, 14, 12, 0.9);
             --text-glow: 0px 0px 4px rgba(0,0,0,0.8);
         }
         body.light-mode {
-            --bg: #f4ebd8; 
-            --gold: #b38531; 
-            --green: #1a8a63; 
-            --red: #d12828;
-            --text: #111111; 
-            --water: #1d6aa3; 
-            --metal: #444444; 
-            --earth: #8a652e;
+            --bg: #f4ebd8; --gold: #b38531; --green: #1a8a63; --red: #d12828;
+            --text: #111111; --water: #1d6aa3; --metal: #444444; --earth: #8a652e;
             --border: rgba(179, 133, 49, 0.7);
             --panel-bg: rgba(244, 235, 216, 0.9);
             --text-glow: 0px 0px 4px rgba(255,255,255,0.8);
@@ -34,7 +22,7 @@
         body {
             background-color: var(--bg); color: var(--text);
             font-family: "PingFang TC", "Microsoft JhengHei", monospace;
-            margin: 0; overflow: hidden;
+            margin: 0; overflow-x: hidden;
             display: flex; flex-direction: column; height: 100vh;
         }
 
@@ -62,7 +50,7 @@
         .workspace {
             position: relative; flex: 1; width: 100vw; overflow: hidden;
             display: flex; align-items: center; justify-content: center;
-            touch-action: none;
+            touch-action: none; /* 內部地圖拖拽仍保持觸控處理 */
         }
 
         #floorPlan {
@@ -70,9 +58,11 @@
             transition: opacity 0.3s; pointer-events: none; opacity: 0.6;
         }
 
+        /* 擴大 SVG 容器以適應外部紅點 */
         #compassSvg {
             position: absolute; width: 85vmin; height: 85vmin; max-width: 700px; max-height: 700px;
             pointer-events: none; transition: opacity 0.3s, transform 0.05s linear;
+            overflow: visible;
         }
 
         .theme-toggle-container {
@@ -106,14 +96,19 @@
 
 <div class="workspace" id="workspace">
     <img id="floorPlan" src="" style="display:none;" draggable="false">
-    <svg id="compassSvg" viewBox="0 0 600 600">
+    <svg id="compassSvg" viewBox="0 -60 600 660">
         <g id="compassGroup" transform="rotate(0, 300, 300)">
             <circle cx="300" cy="300" r="280" fill="transparent" stroke="var(--gold)" stroke-width="1.5" stroke-dasharray="2,4"/>
             <circle cx="300" cy="300" r="240" fill="transparent" stroke="var(--border)" stroke-width="1"/>
             <circle cx="300" cy="300" r="80" fill="transparent" stroke="var(--border)" stroke-width="2"/>
             <g id="sectorsLayer" style="text-shadow: var(--text-glow);"></g>
         </g>
-        <circle id="northResetBtn" cx="300" cy="8" r="8" fill="var(--red)" style="cursor: pointer; pointer-events: auto;" onpointerdown="resetCompass(event)"/>
+        <filter id="glow">
+            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+            <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <circle id="northResetBtn" cx="300" cy="-30" r="15" fill="var(--red)" filter="url(#glow)" 
+                style="cursor: pointer; pointer-events: auto;" onpointerdown="resetCompass(event)"/>
     </svg>
 </div>
 
@@ -123,23 +118,14 @@
 
 <script>
     const stars = [
-        { n: 1, name: "一白水", c: "var(--water)" },
-        { n: 2, name: "二黑土", c: "var(--earth)" },
-        { n: 3, name: "三碧木", c: "var(--green)" },
-        { n: 4, name: "四綠木", c: "var(--green)" },
-        { n: 5, name: "五黃土", c: "var(--earth)" },
-        { n: 6, name: "六白金", c: "var(--metal)" },
-        { n: 7, name: "七赤金", c: "var(--metal)" },
-        { n: 8, name: "八白土", c: "var(--earth)" },
+        { n: 1, name: "一白水", c: "var(--water)" }, { n: 2, name: "二黑土", c: "var(--earth)" },
+        { n: 3, name: "三碧木", c: "var(--green)" }, { n: 4, name: "四綠木", c: "var(--green)" },
+        { n: 5, name: "五黃土", c: "var(--earth)" }, { n: 6, name: "六白金", c: "var(--metal)" },
+        { n: 7, name: "七赤金", c: "var(--metal)" }, { n: 8, name: "八白土", c: "var(--earth)" },
         { n: 9, name: "九紫火", c: "var(--red)" }
     ];
     
-    // 星曜本位特質 (不隨時間改變)
-    const starMeanings = [
-        "", "桃花名聲", "疾病田產", "是非官訟", "文昌學業", 
-        "災禍血光", "權威驛馬", "盜賊口舌", "財富置產", "喜慶升遷"
-    ];
-
+    const starMeanings = ["", "桃花名聲", "疾病田產", "是非官訟", "文昌學業", "災禍血光", "權威驛馬", "盜賊口舌", "財富置產", "喜慶升遷"];
     const dirs = ["正北", "東北", "正東", "東南", "正南", "西南", "正西", "西北"];
     const offsets = [5, 3, 7, 8, 4, 6, 2, 1];
 
@@ -158,42 +144,33 @@
         document.getElementById('compassGroup').setAttribute('transform', `rotate(0, 300, 300)`);
     };
 
-    // 三元九運計算器 (1864為上元一運)
     function getPeriodInfo(year) {
         let offset = year - 1864;
-        offset = ((offset % 180) + 180) % 180; // 處理負數年份
+        offset = ((offset % 180) + 180) % 180;
         let period = Math.floor(offset / 20) + 1;
         let cycle = period <= 3 ? "上元" : period <= 6 ? "中元" : "下元";
         const numMap = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
         return { period: period, label: `${cycle}${numMap[period]}運` };
     }
 
-    // 動態旺衰計算
     function getDynamicStatus(star, currentPeriod) {
         const diff = (star - currentPeriod + 9) % 9;
-        let status = "";
-        let isDanger = false;
-
+        let status = "", isDanger = false;
         if (diff === 0) status = "當旺";
         else if (diff === 1) status = "生氣";
         else if (diff === 2) status = "進氣";
         else if (diff === 8) status = "退氣";
         else if (diff === 7) status = "衰氣";
-        else if (star === 5) { status = "大煞"; isDanger = true; } // 五黃失令必為大煞
+        else if (star === 5) { status = "大煞"; isDanger = true; }
         else if (diff === 3 || diff === 4) status = "死氣";
-        else { status = "煞氣"; isDanger = true; } // 距離最遠的星曜
-
+        else { status = "煞氣"; isDanger = true; }
         return { text: `${status} - ${starMeanings[star]}`, isDanger: isDanger };
     }
 
     function renderCompass() {
         const year = parseInt(document.getElementById('yearInput').value);
-        
-        // 取得流年對應的「入中宮星」與「大運」
         let centerStar = (10 - ((year - 1900) % 9)) % 9 || 9;
         let periodInfo = getPeriodInfo(year);
-        
-        // 更新上方標籤
         document.getElementById('periodLabel').innerText = `(${periodInfo.label})`;
 
         const layer = document.getElementById('sectorsLayer');
@@ -214,8 +191,6 @@
 
             let starNum = (centerStar + offsets[i] - 1) % 9 + 1;
             const sD = stars[starNum - 1];
-            
-            // 取得該星在目前大運的吉凶狀態
             const dynamicStatus = getDynamicStatus(starNum, periodInfo.period);
 
             layer.innerHTML += `
@@ -231,7 +206,6 @@
         }
     }
 
-    // 拖曳與影像處理邏輯保持不變...
     function handleImage(e) {
         if (!e.target.files[0]) return;
         const reader = new FileReader();
