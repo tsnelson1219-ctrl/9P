@@ -29,6 +29,10 @@
         .btn-danger { border-color: var(--red); color: var(--red); }
         .btn.active-mode { background: var(--gold); color: var(--panel-bg); font-weight: bold; }
         
+        @media (pointer: fine) {
+            #autoNorthBtn { display: none; }
+        }
+        
         .year-input { background: transparent; border: 1px solid var(--gold); border-radius: 6px; color: var(--gold); text-align: center; font-size: 16px; width: 70px; padding: 7px; outline: none; }
         
         .workspace { position: relative; flex: 1; width: 100vw; overflow: hidden; display: flex; align-items: center; justify-content: center; touch-action: none; }
@@ -95,19 +99,31 @@
     let state = { mode: 'compass', compassRot: 0, compassScale: 1, map: { x: 0, y: 0, scale: 1, rot: 0 }, startAngle: 0 };
     let initialCompassScale = 1;
     let isAutoNorth = false;
+    let compassCheckTimeout = null;
 
-    // 指北模式邏輯
     function toggleAutoNorth() {
         if (!isAutoNorth) {
+            if (window.isSecureContext === false) {
+                alert("【系統限制】\n指北針功能必須在 HTTPS 加密連線環境下才能使用。");
+                return;
+            }
+
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 DeviceOrientationEvent.requestPermission()
                     .then(permissionState => {
-                        if (permissionState === 'granted') startAutoNorth();
-                        else alert('需要允許感測器權限才能使用指北功能。');
+                        if (permissionState === 'granted') {
+                            startAutoNorth();
+                        } else {
+                            alert("【權限被拒】\n需要允許「動作與方向」權限才能驅動羅盤。");
+                        }
                     })
-                    .catch(console.error);
-            } else {
+                    .catch(err => {
+                        alert("請求權限時發生錯誤: " + err);
+                    });
+            } else if ("DeviceOrientationEvent" in window) {
                 startAutoNorth();
+            } else {
+                alert("【硬體限制】\n您的設備或瀏覽器不支援方向感測器功能。");
             }
         } else {
             stopAutoNorth();
@@ -120,11 +136,39 @@
         btn.classList.add('active-mode');
         btn.innerText = '關閉指北';
         
+        let eventFired = false;
+        
+        const orientationHandler = (event) => {
+            eventFired = true;
+            let heading = null;
+            
+            if (event.webkitCompassHeading) {
+                heading = event.webkitCompassHeading;
+            } else if (event.alpha !== null) {
+                heading = 360 - event.alpha; 
+            }
+
+            if (heading !== null) {
+                state.compassRot = -heading;
+                document.getElementById('compassGroup').setAttribute('transform', `rotate(${state.compassRot}, 300, 300)`);
+            }
+        };
+
         if (window.DeviceOrientationAbsoluteEvent) {
-            window.addEventListener("deviceorientationabsolute", handleOrientation, true);
+            window.addEventListener("deviceorientationabsolute", orientationHandler, true);
         } else {
-            window.addEventListener("deviceorientation", handleOrientation, true);
+            window.addEventListener("deviceorientation", orientationHandler, true);
         }
+
+        window.activeOrientationHandler = orientationHandler;
+
+        clearTimeout(compassCheckTimeout);
+        compassCheckTimeout = setTimeout(() => {
+            if (!eventFired) {
+                alert("【感測無效】未偵測到羅盤訊號。\n\n▶ iOS：請確認已允許動作權限。\n▶ Android：請點擊網址列左側設定圖示 → 網站設定 → 將「動作感測器」設為允許。");
+                stopAutoNorth();
+            }
+        }, 1000);
     }
 
     function stopAutoNorth() {
@@ -132,25 +176,11 @@
         const btn = document.getElementById('autoNorthBtn');
         btn.classList.remove('active-mode');
         btn.innerText = '指北模式';
-        window.removeEventListener("deviceorientationabsolute", handleOrientation, true);
-        window.removeEventListener("deviceorientation", handleOrientation, true);
-    }
-
-    function handleOrientation(event) {
-        let heading = null;
-        // iOS
-        if (event.webkitCompassHeading) {
-            heading = event.webkitCompassHeading;
-        } 
-        // Android / General
-        else if (event.alpha !== null) {
-            heading = 360 - event.alpha; 
-        }
-
-        if (heading !== null) {
-            // 平滑旋轉羅盤 SVG
-            state.compassRot = -heading;
-            document.getElementById('compassGroup').setAttribute('transform', `rotate(${state.compassRot}, 300, 300)`);
+        clearTimeout(compassCheckTimeout);
+        
+        if (window.activeOrientationHandler) {
+            window.removeEventListener("deviceorientationabsolute", window.activeOrientationHandler, true);
+            window.removeEventListener("deviceorientation", window.activeOrientationHandler, true);
         }
     }
 
@@ -165,12 +195,10 @@
     window.resetCompass = function(e) {
         e.stopPropagation(); resetClickCount++;
         if (resetClickCount === 1) {
-            // 單擊：關閉指北模式並歸零
             if(isAutoNorth) stopAutoNorth();
             state.compassRot = 0; document.getElementById('compassGroup').setAttribute('transform', `rotate(0, 300, 300)`);
             resetTimeout = setTimeout(() => { resetClickCount = 0; }, 400);
         } else {
-            // 雙擊：歸零縮放
             state.compassScale = 1; document.getElementById('compassSvg').style.transform = `translateY(-8vh) scale(1)`;
             clearTimeout(resetTimeout); resetClickCount = 0;
         }
@@ -265,7 +293,6 @@
             const rect = ws.getBoundingClientRect(), cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
             
             if (state.mode === 'compass') { 
-                // 若指北模式開啟，封鎖手動旋轉羅盤
                 if (isAutoNorth) return;
                 state.compassRot = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI - state.startAngle; 
                 document.getElementById('compassGroup').setAttribute('transform', `rotate(${state.compassRot}, 300, 300)`); 
