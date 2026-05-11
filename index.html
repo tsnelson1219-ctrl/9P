@@ -58,7 +58,6 @@
             transition: opacity 0.3s; pointer-events: none; opacity: 0.6;
         }
 
-        /* 整個羅盤向上移動 8vh，解決位置偏下的問題 */
         #compassSvg {
             position: absolute; width: 85vmin; height: 85vmin; max-width: 700px; max-height: 700px;
             pointer-events: none; transition: opacity 0.3s, transform 0.05s linear;
@@ -140,12 +139,31 @@
         renderCompass();
     }
 
+    // 單擊與雙擊分離邏輯
+    let resetClickCount = 0;
+    let resetTimeout = null;
+
     window.resetCompass = function(e) {
         e.stopPropagation();
-        state.compassRot = 0;
-        state.compassScale = 1;
-        document.getElementById('compassGroup').setAttribute('transform', `rotate(0, 300, 300)`);
-        document.getElementById('compassSvg').style.transform = `translateY(-8vh) scale(1)`;
+        resetClickCount++;
+
+        if (resetClickCount === 1) {
+            // 單擊：立即歸零方位
+            state.compassRot = 0;
+            document.getElementById('compassGroup').setAttribute('transform', `rotate(0, 300, 300)`);
+            
+            // 開啟 400ms 的雙擊判定窗口
+            resetTimeout = setTimeout(() => {
+                resetClickCount = 0;
+            }, 400);
+        } else if (resetClickCount === 2) {
+            // 雙擊：歸零縮放比例
+            state.compassScale = 1;
+            document.getElementById('compassSvg').style.transform = `translateY(-8vh) scale(1)`;
+            
+            clearTimeout(resetTimeout);
+            resetClickCount = 0;
+        }
     };
 
     function getPeriodInfo(year) {
@@ -240,7 +258,7 @@
             if (state.mode === 'map') {
                 initialPinchAngle = Math.atan2(p2.clientY - p1.clientY, p2.clientX - p1.clientX) * 180 / Math.PI;
                 initialMapScale = state.map.scale; initialMapRot = state.map.rot;
-            } else if (e.pointerType === 'touch') { // 僅在觸控模式允許羅盤縮放
+            } else if (e.pointerType === 'touch') { 
                 initialCompassScale = state.compassScale;
             }
         }
@@ -271,7 +289,7 @@
                 state.map.scale = Math.max(0.1, initialMapScale * (dist / initialPinchDist));
                 state.map.rot = initialMapRot + (Math.atan2(p2.clientY - p1.clientY, p2.clientX - p1.clientX) * 180 / Math.PI - initialPinchAngle);
                 updateMap();
-            } else if (e.pointerType === 'touch') { // 鎖定電腦版羅盤比例
+            } else if (e.pointerType === 'touch') {
                 state.compassScale = Math.max(0.5, Math.min(3, initialCompassScale * (dist / initialPinchDist)));
                 document.getElementById('compassSvg').style.transform = `translateY(-8vh) scale(${state.compassScale})`;
             }
@@ -292,7 +310,6 @@
     ws.addEventListener('wheel', (e) => {
         e.preventDefault();
         if (state.mode === 'map') { state.map.scale *= (e.deltaY > 0 ? 0.95 : 1.05); updateMap(); }
-        // 電腦版滾輪對羅盤不產生作用，確保比例穩定
     }, { passive: false });
 
     renderCompass();
