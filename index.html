@@ -2,27 +2,27 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>九宮飛星</title>
     <style>
         :root {
             --bg: #0f0e0c; --gold: #f5c767; --green: #5cd0aa; --red: #ff5757;
             --text: #ffffff; --water: #6eb5f9; --metal: #e6e6e6; --earth: #cca45e;
-            --border: rgba(245, 199, 103, 0.7);
+            --border: rgba(245, 199, 103, 0.8);
             --panel-bg: rgba(15, 14, 12, 0.9);
-            --text-glow: 0px 0px 4px rgba(0,0,0,0.8);
+            --text-glow: 0px 0px 5px rgba(0,0,0,0.9);
         }
         body.light-mode {
             --bg: #f4ebd8; --gold: #b38531; --green: #1a8a63; --red: #d12828;
             --text: #111111; --water: #1d6aa3; --metal: #444444; --earth: #8a652e;
-            --border: rgba(179, 133, 49, 0.7);
+            --border: rgba(179, 133, 49, 0.8);
             --panel-bg: rgba(244, 235, 216, 0.9);
-            --text-glow: 0px 0px 4px rgba(255,255,255,0.8);
+            --text-glow: 0px 0px 5px rgba(255,255,255,0.9);
         }
         body {
             background-color: var(--bg); color: var(--text);
             font-family: "PingFang TC", "Microsoft JhengHei", monospace;
-            margin: 0; overflow-x: hidden;
+            margin: 0; overflow: hidden;
             display: flex; flex-direction: column; height: 100vh;
         }
 
@@ -50,7 +50,7 @@
         .workspace {
             position: relative; flex: 1; width: 100vw; overflow: hidden;
             display: flex; align-items: center; justify-content: center;
-            touch-action: none; /* 內部地圖拖拽仍保持觸控處理 */
+            touch-action: none;
         }
 
         #floorPlan {
@@ -58,11 +58,12 @@
             transition: opacity 0.3s; pointer-events: none; opacity: 0.6;
         }
 
-        /* 擴大 SVG 容器以適應外部紅點 */
+        /* 整個羅盤向上移動 8vh，解決位置偏下的問題 */
         #compassSvg {
             position: absolute; width: 85vmin; height: 85vmin; max-width: 700px; max-height: 700px;
             pointer-events: none; transition: opacity 0.3s, transform 0.05s linear;
-            overflow: visible;
+            overflow: visible; transform-origin: center center;
+            transform: translateY(-8vh); 
         }
 
         .theme-toggle-container {
@@ -96,18 +97,19 @@
 
 <div class="workspace" id="workspace">
     <img id="floorPlan" src="" style="display:none;" draggable="false">
-    <svg id="compassSvg" viewBox="0 -60 600 660">
+    <svg id="compassSvg" viewBox="0 -100 600 700">
         <g id="compassGroup" transform="rotate(0, 300, 300)">
             <circle cx="300" cy="300" r="280" fill="transparent" stroke="var(--gold)" stroke-width="1.5" stroke-dasharray="2,4"/>
-            <circle cx="300" cy="300" r="240" fill="transparent" stroke="var(--border)" stroke-width="1"/>
+            <circle cx="300" cy="300" r="240" fill="transparent" stroke="var(--border)" stroke-width="1.2"/>
             <circle cx="300" cy="300" r="80" fill="transparent" stroke="var(--border)" stroke-width="2"/>
             <g id="sectorsLayer" style="text-shadow: var(--text-glow);"></g>
         </g>
-        <filter id="glow">
-            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+        
+        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
             <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
         </filter>
-        <circle id="northResetBtn" cx="300" cy="-30" r="15" fill="var(--red)" filter="url(#glow)" 
+        <circle id="northResetBtn" cx="300" cy="-60" r="20" fill="var(--red)" filter="url(#glow)" 
                 style="cursor: pointer; pointer-events: auto;" onpointerdown="resetCompass(event)"/>
     </svg>
 </div>
@@ -124,12 +126,12 @@
         { n: 7, name: "七赤金", c: "var(--metal)" }, { n: 8, name: "八白土", c: "var(--earth)" },
         { n: 9, name: "九紫火", c: "var(--red)" }
     ];
-    
     const starMeanings = ["", "桃花名聲", "疾病田產", "是非官訟", "文昌學業", "災禍血光", "權威驛馬", "盜賊口舌", "財富置產", "喜慶升遷"];
     const dirs = ["正北", "東北", "正東", "東南", "正南", "西南", "正西", "西北"];
     const offsets = [5, 3, 7, 8, 4, 6, 2, 1];
 
-    let state = { mode: 'compass', compassRot: 0, map: { x: 0, y: 0, scale: 1, rot: 0 }, startAngle: 0 };
+    let state = { mode: 'compass', compassRot: 0, compassScale: 1, map: { x: 0, y: 0, scale: 1, rot: 0 }, startAngle: 0 };
+    let initialCompassScale = 1;
 
     function toggleView() {
         state.mode = state.mode === 'compass' ? 'map' : 'compass';
@@ -141,16 +143,17 @@
     window.resetCompass = function(e) {
         e.stopPropagation();
         state.compassRot = 0;
+        state.compassScale = 1;
         document.getElementById('compassGroup').setAttribute('transform', `rotate(0, 300, 300)`);
+        document.getElementById('compassSvg').style.transform = `translateY(-8vh) scale(1)`;
     };
 
     function getPeriodInfo(year) {
-        let offset = year - 1864;
-        offset = ((offset % 180) + 180) % 180;
+        let offset = ((year - 1864) % 180 + 180) % 180;
         let period = Math.floor(offset / 20) + 1;
         let cycle = period <= 3 ? "上元" : period <= 6 ? "中元" : "下元";
         const numMap = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
-        return { period: period, label: `${cycle}${numMap[period]}運` };
+        return { period, label: `${cycle}${numMap[period]}運` };
     }
 
     function getDynamicStatus(star, currentPeriod) {
@@ -164,45 +167,35 @@
         else if (star === 5) { status = "大煞"; isDanger = true; }
         else if (diff === 3 || diff === 4) status = "死氣";
         else { status = "煞氣"; isDanger = true; }
-        return { text: `${status} - ${starMeanings[star]}`, isDanger: isDanger };
+        return { text: `${status} - ${starMeanings[star]}`, isDanger };
     }
 
     function renderCompass() {
-        const year = parseInt(document.getElementById('yearInput').value);
+        const year = parseInt(document.getElementById('yearInput').value) || 2026;
         let centerStar = (10 - ((year - 1900) % 9)) % 9 || 9;
         let periodInfo = getPeriodInfo(year);
         document.getElementById('periodLabel').innerText = `(${periodInfo.label})`;
 
         const layer = document.getElementById('sectorsLayer');
         layer.innerHTML = '';
-
         const cS = stars[centerStar - 1];
         layer.innerHTML += `<text x="300" y="285" fill="${cS.c}" font-size="42" text-anchor="middle" font-weight="bold">${cS.n}</text>`;
         layer.innerHTML += `<text x="300" y="315" fill="${cS.c}" font-size="18" text-anchor="middle">${cS.name}</text>`;
-        
-        const toggleText = state.mode === 'compass' ? "切換底圖" : "切換圓盤";
         layer.innerHTML += `<rect x="255" y="335" width="90" height="26" rx="13" fill="var(--panel-bg)" stroke="var(--gold)" opacity="0.8"/>`;
-        layer.innerHTML += `<text x="300" y="353" fill="var(--gold)" font-size="14" text-anchor="middle" font-weight="bold">${toggleText}</text>`;
+        layer.innerHTML += `<text x="300" y="353" fill="var(--gold)" font-size="14" text-anchor="middle" font-weight="bold">${state.mode === 'compass' ? '切換底圖' : '切換圓盤'}</text>`;
 
         for (let i = 0; i < 8; i++) {
             let angle = i * 45;
             let rad = (angle - 22.5) * Math.PI / 180;
             layer.innerHTML += `<line x1="${300+80*Math.sin(rad)}" y1="${300-80*Math.cos(rad)}" x2="${300+280*Math.sin(rad)}" y2="${300-280*Math.cos(rad)}" stroke="var(--border)" stroke-width="1.5"/>`;
-
             let starNum = (centerStar + offsets[i] - 1) % 9 + 1;
-            const sD = stars[starNum - 1];
-            const dynamicStatus = getDynamicStatus(starNum, periodInfo.period);
-
-            layer.innerHTML += `
-                <g transform="rotate(${angle}, 300, 300)">
-                    <text x="300" y="46" fill="${dynamicStatus.isDanger ? 'var(--red)' : 'var(--gold)'}" 
-                          font-size="14" text-anchor="middle" font-weight="${dynamicStatus.isDanger ? 'bold' : 'normal'}" opacity="0.95">
-                          [ ${dynamicStatus.text} ]
-                    </text>
-                    <text x="300" y="85" fill="var(--gold)" font-size="18" text-anchor="middle" font-weight="bold">${dirs[i]}</text>
-                    <text x="300" y="145" fill="${sD.c}" font-size="56" text-anchor="middle" font-weight="bold">${sD.n}</text>
-                    <text x="300" y="190" fill="${sD.c}" font-size="20" text-anchor="middle" font-weight="bold">${sD.name}</text>
-                </g>`;
+            const sD = stars[starNum - 1], status = getDynamicStatus(starNum, periodInfo.period);
+            layer.innerHTML += `<g transform="rotate(${angle}, 300, 300)">
+                <text x="300" y="46" fill="${status.isDanger ? 'var(--red)' : 'var(--gold)'}" font-size="14" text-anchor="middle" font-weight="${status.isDanger ? 'bold' : 'normal'}">[ ${status.text} ]</text>
+                <text x="300" y="85" fill="var(--gold)" font-size="18" text-anchor="middle" font-weight="bold">${dirs[i]}</text>
+                <text x="300" y="145" fill="${sD.c}" font-size="56" text-anchor="middle" font-weight="bold">${sD.n}</text>
+                <text x="300" y="190" fill="${sD.c}" font-size="20" text-anchor="middle" font-weight="bold">${sD.name}</text>
+            </g>`;
         }
     }
 
@@ -211,11 +204,9 @@
         const reader = new FileReader();
         reader.onload = (event) => {
             const img = document.getElementById('floorPlan');
-            img.src = event.target.result;
-            img.style.display = 'block';
+            img.src = event.target.result; img.style.display = 'block';
             state.map = { x: 0, y: 0, scale: 1, rot: 0 };
-            updateMap();
-            if(state.mode === 'compass') toggleView();
+            if(state.mode === 'compass') toggleView(); else updateMap();
         };
         reader.readAsDataURL(e.target.files[0]);
     }
@@ -231,33 +222,27 @@
         document.getElementById('floorPlan').style.transform = `translate(calc(-50% + ${state.map.x}px), calc(-50% + ${state.map.y}px)) rotate(${state.map.rot}deg) scale(${state.map.scale})`;
     }
 
-    function snapAngle(angle, threshold = 5) {
-        let normalized = ((angle % 360) + 360) % 360; 
-        const targets = [0, 90, 180, 270, 360];
-        for (let t of targets) if (Math.abs(normalized - t) <= threshold) return t === 360 ? 0 : t;
-        return angle;
-    }
-
     const ws = document.getElementById('workspace');
-    let pointers = [];
-    let initialPinchDist = null, initialPinchAngle = null, initialMapScale = 1, initialMapRot = 0, isClick = false;
+    let pointers = [], initialPinchDist = null, initialPinchAngle = null, initialMapScale = 1, initialMapRot = 0, isClick = false;
 
     ws.addEventListener('pointerdown', (e) => {
         ws.setPointerCapture(e.pointerId);
-        pointers.push(e);
-        isClick = true;
+        pointers.push(e); isClick = true;
         if (pointers.length === 1) {
             state.lastX = e.clientX; state.lastY = e.clientY;
-            const rect = ws.getBoundingClientRect();
-            const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+            const rect = ws.getBoundingClientRect(), cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
             const currentAngle = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI;
             state.startAngle = (state.mode === 'compass') ? (currentAngle - state.compassRot) : (e.shiftKey ? currentAngle - state.map.rot : 0);
-        } else if (pointers.length === 2 && state.mode === 'map') {
+        } else if (pointers.length === 2) {
             isClick = false;
             let p1 = pointers[0], p2 = pointers[1];
             initialPinchDist = Math.hypot(p2.clientX - p1.clientX, p2.clientY - p1.clientY);
-            initialPinchAngle = Math.atan2(p2.clientY - p1.clientY, p2.clientX - p1.clientX) * 180 / Math.PI;
-            initialMapScale = state.map.scale; initialMapRot = state.map.rot;
+            if (state.mode === 'map') {
+                initialPinchAngle = Math.atan2(p2.clientY - p1.clientY, p2.clientX - p1.clientX) * 180 / Math.PI;
+                initialMapScale = state.map.scale; initialMapRot = state.map.rot;
+            } else if (e.pointerType === 'touch') { // 僅在觸控模式允許羅盤縮放
+                initialCompassScale = state.compassScale;
+            }
         }
     });
 
@@ -266,37 +251,37 @@
         if (index !== -1) pointers[index] = e;
         if (pointers.length === 1) {
             if (Math.hypot(e.clientX - state.lastX, e.clientY - state.lastY) > 5) isClick = false;
-            const rect = ws.getBoundingClientRect();
-            const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+            const rect = ws.getBoundingClientRect(), cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
             if (state.mode === 'compass') {
                 state.compassRot = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI - state.startAngle;
                 document.getElementById('compassGroup').setAttribute('transform', `rotate(${state.compassRot}, 300, 300)`);
             } else if (!isClick) {
                 if (e.shiftKey) {
-                    state.map.rot = snapAngle(Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI - state.startAngle);
+                    let raw = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI - state.startAngle;
+                    state.map.rot = [0, 90, 180, 270].find(t => Math.abs((((raw%360)+360)%360)-t) <= 5) ?? raw;
                 } else {
                     state.map.x += (e.clientX - state.lastX); state.map.y += (e.clientY - state.lastY);
                     state.lastX = e.clientX; state.lastY = e.clientY;
                 }
                 updateMap();
             }
-        } else if (pointers.length === 2 && state.mode === 'map') {
-            let p1 = pointers[0], p2 = pointers[1];
-            let currentDist = Math.hypot(p2.clientX - p1.clientX, p2.clientY - p1.clientY);
-            let currentAngle = Math.atan2(p2.clientY - p1.clientY, p2.clientX - p1.clientX) * 180 / Math.PI;
-            state.map.scale = Math.max(0.1, initialMapScale * (currentDist / initialPinchDist));
-            state.map.rot = snapAngle(initialMapRot + (currentAngle - initialPinchAngle));
-            updateMap();
+        } else if (pointers.length === 2) {
+            let p1 = pointers[0], p2 = pointers[1], dist = Math.hypot(p2.clientX - p1.clientX, p2.clientY - p1.clientY);
+            if (state.mode === 'map') {
+                state.map.scale = Math.max(0.1, initialMapScale * (dist / initialPinchDist));
+                state.map.rot = initialMapRot + (Math.atan2(p2.clientY - p1.clientY, p2.clientX - p1.clientX) * 180 / Math.PI - initialPinchAngle);
+                updateMap();
+            } else if (e.pointerType === 'touch') { // 鎖定電腦版羅盤比例
+                state.compassScale = Math.max(0.5, Math.min(3, initialCompassScale * (dist / initialPinchDist)));
+                document.getElementById('compassSvg').style.transform = `translateY(-8vh) scale(${state.compassScale})`;
+            }
         }
     });
 
     const removePointer = (e) => {
         if (isClick && pointers.length === 1) {
-            const rect = ws.getBoundingClientRect();
-            const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
-            const dist = Math.hypot(e.clientX - cx, e.clientY - cy);
-            const scale = document.getElementById('compassSvg').getBoundingClientRect().width / 600; 
-            if (dist <= 80 * scale) toggleView();
+            const rect = ws.getBoundingClientRect(), cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+            if (Math.hypot(e.clientX - cx, e.clientY - cy) <= 80 * (document.getElementById('compassSvg').getBoundingClientRect().width / 600)) toggleView();
         }
         pointers = pointers.filter(p => p.pointerId !== e.pointerId);
         if (ws.hasPointerCapture(e.pointerId)) ws.releasePointerCapture(e.pointerId);
@@ -305,11 +290,9 @@
     ws.addEventListener('pointerup', removePointer);
     ws.addEventListener('pointercancel', removePointer);
     ws.addEventListener('wheel', (e) => {
-        if (state.mode === 'map') {
-            e.preventDefault();
-            state.map.scale *= (e.deltaY > 0 ? 0.95 : 1.05);
-            updateMap();
-        }
+        e.preventDefault();
+        if (state.mode === 'map') { state.map.scale *= (e.deltaY > 0 ? 0.95 : 1.05); updateMap(); }
+        // 電腦版滾輪對羅盤不產生作用，確保比例穩定
     }, { passive: false });
 
     renderCompass();
