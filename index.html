@@ -23,12 +23,15 @@
         .top-nav { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 15px; padding: 15px; background: var(--panel-bg); border-bottom: 1px solid var(--border); z-index: 100; }
         .nav-group { display: flex; gap: 10px; align-items: center; }
         .btn { background: transparent; color: var(--gold); border: 1px solid var(--gold); padding: 8px 16px; cursor: pointer; border-radius: 6px; font-size: 14px; transition: all 0.2s; white-space: nowrap; }
+        .btn.active { background: var(--gold); color: var(--bg); font-weight: bold; }
         .btn:active { transform: scale(0.95); }
         .btn-danger { border-color: var(--red); color: var(--red); }
         .year-input { background: transparent; border: 1px solid var(--gold); border-radius: 6px; color: var(--gold); text-align: center; font-size: 16px; width: 70px; padding: 7px; outline: none; }
         .workspace { position: relative; flex: 1; width: 100vw; overflow: hidden; display: flex; align-items: center; justify-content: center; touch-action: none; }
         #floorPlan { position: absolute; transform-origin: center center; transition: opacity 0.3s; pointer-events: none; opacity: 0.6; }
         #compassSvg { position: absolute; width: 85vmin; height: 85vmin; max-width: 700px; max-height: 700px; pointer-events: none; transition: opacity 0.3s, transform 0.05s linear; overflow: visible; transform-origin: center center; transform: translateY(-8vh); }
+        /* 增加羅盤旋轉時的平滑過渡效果 */
+        #compassGroup { transition: transform 0.1s ease-out; }
         .theme-toggle-container { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 100; }
         .theme-toggle { width: 45px; height: 45px; border-radius: 50%; border: 1px solid var(--gold); background: var(--panel-bg); cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--gold); font-size: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
         #fileInput { display: none; }
@@ -43,6 +46,7 @@
         <span id="periodLabel" style="color:var(--gold); font-size:14px; font-weight:bold;"></span>
     </div>
     <div class="nav-group">
+        <button class="btn" id="autoCompassBtn" onclick="toggleAutoCompass()">🧲 動態指北</button>
         <button class="btn" onclick="document.getElementById('fileInput').click()">上傳底圖</button>
         <button class="btn btn-danger" onclick="clearMap()">清除底圖</button>
     </div>
@@ -84,9 +88,61 @@
 
     const dirs = ["正北", "東北", "正東", "東南", "正南", "西南", "正西", "西北"];
     const offsets = [5, 3, 7, 8, 4, 6, 2, 1];
-    let state = { mode: 'compass', compassRot: 0, compassScale: 1, map: { x: 0, y: 0, scale: 1, rot: 0 }, startAngle: 0 };
+    let state = { mode: 'compass', compassRot: 0, compassScale: 1, map: { x: 0, y: 0, scale: 1, rot: 0 }, startAngle: 0, autoCompass: false };
     let initialCompassScale = 1;
 
+    // --- 動態指北針邏輯 ---
+    function toggleAutoCompass() {
+        if (!state.autoCompass) {
+            // iOS 13+ 需要取得權限
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(permissionState => {
+                        if (permissionState === 'granted') {
+                            startAutoCompass();
+                        } else {
+                            alert('需要方位權限才能使用動態指北。');
+                        }
+                    }).catch(console.error);
+            } else {
+                startAutoCompass(); // Android 或舊設備直接啟動
+            }
+        } else {
+            stopAutoCompass();
+        }
+    }
+
+    function startAutoCompass() {
+        state.autoCompass = true;
+        document.getElementById('autoCompassBtn').classList.add('active');
+        window.addEventListener('deviceorientation', handleOrientation, true);
+        window.addEventListener('deviceorientationabsolute', handleOrientation, true); // Android 絕對方位
+    }
+
+    function stopAutoCompass() {
+        state.autoCompass = false;
+        document.getElementById('autoCompassBtn').classList.remove('active');
+        window.removeEventListener('deviceorientation', handleOrientation, true);
+        window.removeEventListener('deviceorientationabsolute', handleOrientation, true);
+    }
+
+    function handleOrientation(event) {
+        if (!state.autoCompass) return;
+        let heading = null;
+        
+        if (event.webkitCompassHeading) {
+            heading = event.webkitCompassHeading; // iOS 專屬絕對方位
+        } else if (event.absolute !== false && event.alpha !== null) {
+            heading = 360 - event.alpha; // Android 絕對方位
+        }
+        
+        if (heading !== null) {
+            state.compassRot = -heading;
+            document.getElementById('compassGroup').setAttribute('transform', `rotate(${state.compassRot}, 300, 300)`);
+        }
+    }
+
+    // --- 視圖與佈局渲染 ---
     function toggleView() {
         state.mode = state.mode === 'compass' ? 'map' : 'compass';
         document.getElementById('compassSvg').style.opacity = state.mode === 'compass' ? '1' : '0.3';
@@ -97,6 +153,8 @@
     let resetClickCount = 0, resetTimeout = null;
     window.resetCompass = function(e) {
         e.stopPropagation(); resetClickCount++;
+        if (state.autoCompass) stopAutoCompass(); // 按下紅點若為動態模式，則強行關閉並歸零
+
         if (resetClickCount === 1) {
             state.compassRot = 0; document.getElementById('compassGroup').setAttribute('transform', `rotate(0, 300, 300)`);
             resetTimeout = setTimeout(() => { resetClickCount = 0; }, 400);
@@ -114,21 +172,16 @@
         return { period, label: `${cycle}${numMap[period]}運` };
     }
 
-    // 動態性質判定：若為 旺/生/進 則取正面詞，否則取負面詞
     function getDynamicStatus(starIdx, currentPeriod) {
         const starNum = starIdx + 1;
         const diff = (starNum - currentPeriod + 9) % 9;
         const isGood = (diff === 0 || diff === 1 || diff === 2);
         let status = "", isDanger = false;
         
-        if (diff === 0) status = "當旺";
-        else if (diff === 1) status = "生氣";
-        else if (diff === 2) status = "進氣";
-        else if (diff === 8) status = "退氣";
-        else if (diff === 7) status = "衰氣";
+        if (diff === 0) status = "當旺"; else if (diff === 1) status = "生氣"; else if (diff === 2) status = "進氣";
+        else if (diff === 8) status = "退氣"; else if (diff === 7) status = "衰氣";
         else if (starNum === 5) { status = "大煞"; isDanger = true; }
-        else if (diff === 3 || diff === 4) status = "死氣";
-        else { status = "煞氣"; isDanger = true; }
+        else if (diff === 3 || diff === 4) status = "死氣"; else { status = "煞氣"; isDanger = true; }
 
         const meaning = isGood ? stars[starIdx].positive : stars[starIdx].negative;
         return { text: `${status} - ${meaning}`, isDanger };
@@ -174,10 +227,16 @@
     function clearMap() { const img = document.getElementById('floorPlan'); img.src = ''; img.style.display = 'none'; document.getElementById('fileInput').value = ''; state.map = { x: 0, y: 0, scale: 1, rot: 0 }; }
     function updateMap() { document.getElementById('floorPlan').style.transform = `translate(calc(-50% + ${state.map.x}px), calc(-50% + ${state.map.y}px)) rotate(${state.map.rot}deg) scale(${state.map.scale})`; }
 
+    // --- 觸控邏輯 ---
     const ws = document.getElementById('workspace');
     let pointers = [], initialPinchDist = null, initialPinchAngle = null, initialMapScale = 1, initialMapRot = 0, isClick = false;
+    
     ws.addEventListener('pointerdown', (e) => {
         ws.setPointerCapture(e.pointerId); pointers.push(e); isClick = true;
+        
+        // 防呆：一旦使用者試圖手動操作，自動解除動態指北
+        if (state.autoCompass) stopAutoCompass();
+
         if (pointers.length === 1) {
             state.lastX = e.clientX; state.lastY = e.clientY;
             const rect = ws.getBoundingClientRect(), cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
@@ -189,6 +248,7 @@
             else if (e.pointerType === 'touch') { initialCompassScale = state.compassScale; }
         }
     });
+    
     ws.addEventListener('pointermove', (e) => {
         const index = pointers.findIndex(p => p.pointerId === e.pointerId); if (index !== -1) pointers[index] = e;
         if (pointers.length === 1) {
@@ -206,6 +266,7 @@
             else if (e.pointerType === 'touch') { state.compassScale = Math.max(0.5, Math.min(3, initialCompassScale * (dist / initialPinchDist))); document.getElementById('compassSvg').style.transform = `translateY(-8vh) scale(${state.compassScale})`; }
         }
     });
+    
     const removePointer = (e) => {
         if (isClick && pointers.length === 1) {
             const rect = ws.getBoundingClientRect(), cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
@@ -213,8 +274,10 @@
         }
         pointers = pointers.filter(p => p.pointerId !== e.pointerId); if (ws.hasPointerCapture(e.pointerId)) ws.releasePointerCapture(e.pointerId);
     };
+    
     ws.addEventListener('pointerup', removePointer); ws.addEventListener('pointercancel', removePointer);
     ws.addEventListener('wheel', (e) => { e.preventDefault(); if (state.mode === 'map') { state.map.scale *= (e.deltaY > 0 ? 0.95 : 1.05); updateMap(); } }, { passive: false });
+    
     renderCompass();
 </script>
 </body>
