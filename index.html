@@ -20,25 +20,27 @@
             --text-glow: 0px 0px 5px rgba(255,255,255,0.9);
         }
         body { background-color: var(--bg); color: var(--text); font-family: "PingFang TC", "Microsoft JhengHei", monospace; margin: 0; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
-        
         .top-nav { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 15px; padding: 15px; background: var(--panel-bg); border-bottom: 1px solid var(--border); z-index: 100; }
         .nav-group { display: flex; gap: 10px; align-items: center; }
-        
         .btn { background: transparent; color: var(--gold); border: 1px solid var(--gold); padding: 8px 16px; cursor: pointer; border-radius: 6px; font-size: 14px; transition: all 0.2s; white-space: nowrap; }
         .btn:active { transform: scale(0.95); }
         .btn-danger { border-color: var(--red); color: var(--red); }
         .btn.active-mode { background: var(--gold); color: var(--panel-bg); font-weight: bold; }
+        @media (pointer: fine) { #autoNorthBtn { display: none; } }
+        .year-input { background: transparent; border: 1px solid var(--gold); border-radius: 6px; color: var(--gold); text-align: center; font-size: 16px; width: 70px; padding: 7px; outline: none; }
+        .workspace { position: relative; flex: 1; width: 100vw; overflow: hidden; display: flex; align-items: center; justify-content: center; touch-action: none; }
         
-        @media (pointer: fine) {
-            #autoNorthBtn { display: none; }
+        #floorPlan { 
+            position: absolute; 
+            /* 強制底圖初始坐標在父容器正中央，配合 JS 的坐標歸零與 CSS translate(-50%,-50%) 實現絕對居中 */
+            left: 50%; top: 50%;
+            transform-origin: center center; 
+            transition: opacity 0.3s; 
+            pointer-events: none; 
+            opacity: 0.6; 
         }
         
-        .year-input { background: transparent; border: 1px solid var(--gold); border-radius: 6px; color: var(--gold); text-align: center; font-size: 16px; width: 70px; padding: 7px; outline: none; }
-        
-        .workspace { position: relative; flex: 1; width: 100vw; overflow: hidden; display: flex; align-items: center; justify-content: center; touch-action: none; }
-        #floorPlan { position: absolute; transform-origin: center center; transition: opacity 0.3s; pointer-events: none; opacity: 0.6; }
         #compassSvg { position: absolute; width: 85vmin; height: 85vmin; max-width: 700px; max-height: 700px; pointer-events: none; transition: opacity 0.3s, transform 0.05s linear; overflow: visible; transform-origin: center center; transform: translateY(-8vh); }
-        
         .theme-toggle-container { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 100; }
         .theme-toggle { width: 45px; height: 45px; border-radius: 50%; border: 1px solid var(--gold); background: var(--panel-bg); cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--gold); font-size: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
         #fileInput { display: none; }
@@ -82,198 +84,98 @@
 
 <script>
     const stars = [
-        { n: 1, name: "一白水", c: "var(--water)", positive: "名聲官位", negative: "憂鬱孤獨" },
-        { n: 2, name: "二黑土", c: "var(--earth)", positive: "財富田產", negative: "病符健康" },
-        { n: 3, name: "三碧木", c: "var(--green)", positive: "競爭活力", negative: "是非官訟" },
-        { n: 4, name: "四綠木", c: "var(--green)", positive: "文昌桃花", negative: "酒色風波" },
-        { n: 5, name: "五黃土", c: "var(--earth)", positive: "帝王威權", negative: "災禍血光" },
-        { n: 6, name: "六白金", c: "var(--metal)", positive: "驛馬權柄", negative: "官非孤獨" },
-        { n: 7, name: "七赤金", c: "var(--metal)", positive: "權威口才", negative: "小人是非" },
-        { n: 8, name: "八白土", c: "var(--earth)", positive: "財富吉慶", negative: "財運退守" },
+        { n: 1, name: "一白水", c: "var(--water)", positive: "名聲官位", negative: "憂鬱孤獨" }, { n: 2, name: "二黑土", c: "var(--earth)", positive: "財富田產", negative: "病符健康" },
+        { n: 3, name: "三碧木", c: "var(--green)", positive: "競爭活力", negative: "是非官訟" }, { n: 4, name: "四綠木", c: "var(--green)", positive: "文昌桃花", negative: "酒色風波" },
+        { n: 5, name: "五黃土", c: "var(--earth)", positive: "帝王威權", negative: "災禍血光" }, { n: 6, name: "六白金", c: "var(--metal)", positive: "驛馬權柄", negative: "官非孤獨" },
+        { n: 7, name: "七赤金", c: "var(--metal)", positive: "權威口才", negative: "小人是非" }, { n: 8, name: "八白土", c: "var(--earth)", positive: "財富吉慶", negative: "財運退守" },
         { n: 9, name: "九紫火", c: "var(--red)", positive: "喜慶升遷", negative: "火燥精神" }
     ];
-
     const dirs = ["正北", "東北", "正東", "東南", "正南", "西南", "正西", "西北"];
     const offsets = [5, 3, 7, 8, 4, 6, 2, 1];
-    
     let state = { mode: 'compass', compassRot: 0, compassScale: 1, map: { x: 0, y: 0, scale: 1, rot: 0 }, startAngle: 0 };
-    let initialCompassScale = 1;
-    let isAutoNorth = false;
-    let compassCheckTimeout = null;
+    let initialCompassScale = 1, isAutoNorth = false, compassCheckTimeout = null;
 
     function toggleAutoNorth() {
         if (!isAutoNorth) {
-            if (window.isSecureContext === false) {
-                alert("【系統限制】\n指北針功能必須在 HTTPS 加密連線環境下才能使用。");
-                return;
-            }
-
+            if (window.isSecureContext === false) { alert("【系統限制】\n指北針功能必須在 HTTPS 加密連線環境下才能使用。"); return; }
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission()
-                    .then(permissionState => {
-                        if (permissionState === 'granted') {
-                            startAutoNorth();
-                        } else {
-                            alert("【權限被拒】\n需要允許「動作與方向」權限才能驅動羅盤。");
-                        }
-                    })
-                    .catch(err => {
-                        alert("請求權限時發生錯誤: " + err);
-                    });
-            } else if ("DeviceOrientationEvent" in window) {
-                startAutoNorth();
-            } else {
-                alert("【硬體限制】\n您的設備或瀏覽器不支援方向感測器功能。");
-            }
-        } else {
-            stopAutoNorth();
-        }
+                DeviceOrientationEvent.requestPermission().then(permissionState => { if (permissionState === 'granted') startAutoNorth(); else alert("【權限被拒】\n需要允許動作權限。"); }).catch(err => alert("錯誤: " + err));
+            } else if ("DeviceOrientationEvent" in window) { startAutoNorth(); }
+            else alert("【硬體限制】\n您的設備不支援方向感測器。");
+        } else stopAutoNorth();
     }
 
     function startAutoNorth() {
-        isAutoNorth = true;
-        const btn = document.getElementById('autoNorthBtn');
-        btn.classList.add('active-mode');
-        btn.innerText = '關閉指北';
-        
+        isAutoNorth = true; document.getElementById('autoNorthBtn').classList.add('active-mode'); document.getElementById('autoNorthBtn').innerText = '關閉指北';
         let eventFired = false;
-        
         const orientationHandler = (event) => {
-            eventFired = true;
-            let heading = null;
-            
-            if (event.webkitCompassHeading) {
-                heading = event.webkitCompassHeading;
-            } else if (event.alpha !== null) {
-                heading = 360 - event.alpha; 
-            }
-
-            if (heading !== null) {
-                state.compassRot = -heading;
-                document.getElementById('compassGroup').setAttribute('transform', `rotate(${state.compassRot}, 300, 300)`);
-            }
+            eventFired = true; let heading = null;
+            if (event.webkitCompassHeading) heading = event.webkitCompassHeading;
+            else if (event.alpha !== null) heading = 360 - event.alpha; 
+            if (heading !== null) { state.compassRot = -heading; document.getElementById('compassGroup').setAttribute('transform', `rotate(${state.compassRot}, 300, 300)`); }
         };
-
-        if (window.DeviceOrientationAbsoluteEvent) {
-            window.addEventListener("deviceorientationabsolute", orientationHandler, true);
-        } else {
-            window.addEventListener("deviceorientation", orientationHandler, true);
-        }
-
+        if (window.DeviceOrientationAbsoluteEvent) window.addEventListener("deviceorientationabsolute", orientationHandler, true);
+        else window.addEventListener("deviceorientation", orientationHandler, true);
         window.activeOrientationHandler = orientationHandler;
-
         clearTimeout(compassCheckTimeout);
         compassCheckTimeout = setTimeout(() => {
             if (!eventFired) {
-                alert("【感測無效】未偵測到羅盤訊號。\n\n▶ iOS：請確認已允許動作權限。\n▶ Android：請點擊網址列左側設定圖示 → 網站設定 → 將「動作感測器」設為允許。");
+                // 指北針校正引導
+                alert("【感測無效 / 需校正】未偵測到準確訊號。\n\n▶ 若方位不準，請拿著手機在空中畫大大的「8」字進行物理校正。\n▶ Android 用戶請確認Chrome的「動作感測器」權限已開啟。");
                 stopAutoNorth();
             }
         }, 1000);
     }
-
-    function stopAutoNorth() {
-        isAutoNorth = false;
-        const btn = document.getElementById('autoNorthBtn');
-        btn.classList.remove('active-mode');
-        btn.innerText = '指北模式';
-        clearTimeout(compassCheckTimeout);
-        
-        if (window.activeOrientationHandler) {
-            window.removeEventListener("deviceorientationabsolute", window.activeOrientationHandler, true);
-            window.removeEventListener("deviceorientation", window.activeOrientationHandler, true);
-        }
-    }
-
-    function toggleView() {
-        state.mode = state.mode === 'compass' ? 'map' : 'compass';
-        document.getElementById('compassSvg').style.opacity = state.mode === 'compass' ? '1' : '0.3';
-        document.getElementById('floorPlan').style.opacity = state.mode === 'map' ? '1' : '0.6';
-        renderCompass();
-    }
-
+    function stopAutoNorth() { isAutoNorth = false; document.getElementById('autoNorthBtn').classList.remove('active-mode'); document.getElementById('autoNorthBtn').innerText = '指北模式'; clearTimeout(compassCheckTimeout); if (window.activeOrientationHandler) { window.removeEventListener("deviceorientationabsolute", window.activeOrientationHandler, true); window.removeEventListener("deviceorientation", window.activeOrientationHandler, true); } }
+    function toggleView() { state.mode = state.mode === 'compass' ? 'map' : 'compass'; document.getElementById('compassSvg').style.opacity = state.mode === 'compass' ? '1' : '0.3'; document.getElementById('floorPlan').style.opacity = state.mode === 'map' ? '1' : '0.6'; renderCompass(); }
     let resetClickCount = 0, resetTimeout = null;
     window.resetCompass = function(e) {
         e.stopPropagation(); resetClickCount++;
-        if (resetClickCount === 1) {
-            if(isAutoNorth) stopAutoNorth();
-            state.compassRot = 0; document.getElementById('compassGroup').setAttribute('transform', `rotate(0, 300, 300)`);
-            resetTimeout = setTimeout(() => { resetClickCount = 0; }, 400);
-        } else {
-            state.compassScale = 1; document.getElementById('compassSvg').style.transform = `translateY(-8vh) scale(1)`;
-            clearTimeout(resetTimeout); resetClickCount = 0;
-        }
+        if (resetClickCount === 1) { if(isAutoNorth) stopAutoNorth(); state.compassRot = 0; document.getElementById('compassGroup').setAttribute('transform', `rotate(0, 300, 300)`); resetTimeout = setTimeout(() => resetClickCount = 0, 400); }
+        else { state.compassScale = 1; document.getElementById('compassSvg').style.transform = `translateY(-8vh) scale(1)`; clearTimeout(resetTimeout); resetClickCount = 0; }
     };
-
-    function getPeriodInfo(year) {
-        let offset = ((year - 1864) % 180 + 180) % 180;
-        let period = Math.floor(offset / 20) + 1;
-        let cycle = period <= 3 ? "上元" : period <= 6 ? "中元" : "下元";
-        const numMap = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
-        return { period, label: `${cycle}${numMap[period]}運` };
-    }
-
-    function getDynamicStatus(starIdx, currentPeriod) {
-        const starNum = starIdx + 1;
-        const diff = (starNum - currentPeriod + 9) % 9;
-        const isGood = (diff === 0 || diff === 1 || diff === 2);
-        let status = "", isDanger = false;
-        
-        if (diff === 0) status = "當旺";
-        else if (diff === 1) status = "生氣";
-        else if (diff === 2) status = "進氣";
-        else if (diff === 8) status = "退氣";
-        else if (diff === 7) status = "衰氣";
-        else if (starNum === 5) { status = "大煞"; isDanger = true; }
-        else if (diff === 3 || diff === 4) status = "死氣";
-        else { status = "煞氣"; isDanger = true; }
-
-        const meaning = isGood ? stars[starIdx].positive : stars[starIdx].negative;
-        return { text: `${status} - ${meaning}`, isDanger };
-    }
-
-    function renderCompass() {
-        const year = parseInt(document.getElementById('yearInput').value) || 2026;
-        let centerStar = (10 - ((year - 1900) % 9)) % 9 || 9;
-        let periodInfo = getPeriodInfo(year);
-        document.getElementById('periodLabel').innerText = `(${periodInfo.label})`;
-        const layer = document.getElementById('sectorsLayer'); layer.innerHTML = '';
-        const cS = stars[centerStar - 1];
-        layer.innerHTML += `<text x="300" y="285" fill="${cS.c}" font-size="42" text-anchor="middle" font-weight="bold">${cS.n}</text>`;
-        layer.innerHTML += `<text x="300" y="315" fill="${cS.c}" font-size="18" text-anchor="middle">${cS.name}</text>`;
-        layer.innerHTML += `<rect x="255" y="335" width="90" height="26" rx="13" fill="var(--panel-bg)" stroke="var(--gold)" opacity="0.8" onclick="toggleView()"/>`;
-        layer.innerHTML += `<text x="300" y="353" fill="var(--gold)" font-size="14" text-anchor="middle" font-weight="bold">${state.mode === 'compass' ? '切換底圖' : '切換圓盤'}</text>`;
-
-        for (let i = 0; i < 8; i++) {
-            let angle = i * 45, rad = (angle - 22.5) * Math.PI / 180;
-            layer.innerHTML += `<line x1="${300+80*Math.sin(rad)}" y1="${300-80*Math.cos(rad)}" x2="${300+280*Math.sin(rad)}" y2="${300-280*Math.cos(rad)}" stroke="var(--border)" stroke-width="1.5"/>`;
-            let starNum = (centerStar + offsets[i] - 1) % 9 + 1;
-            const sD = stars[starNum - 1], status = getDynamicStatus(starNum - 1, periodInfo.period);
-            layer.innerHTML += `<g transform="rotate(${angle}, 300, 300)">
-                <text x="300" y="46" fill="${status.isDanger ? 'var(--red)' : 'var(--gold)'}" font-size="14" text-anchor="middle" font-weight="${status.isDanger ? 'bold' : 'normal'}">[ ${status.text} ]</text>
-                <text x="300" y="85" fill="var(--gold)" font-size="18" text-anchor="middle" font-weight="bold">${dirs[i]}</text>
-                <text x="300" y="145" fill="${sD.c}" font-size="56" text-anchor="middle" font-weight="bold">${sD.n}</text>
-                <text x="300" y="190" fill="${sD.c}" font-size="20" text-anchor="middle" font-weight="bold">${sD.name}</text>
-            </g>`;
-        }
-    }
+    function getPeriodInfo(year) { let offset = ((year - 1864) % 180 + 180) % 180; let period = Math.floor(offset / 20) + 1; let cycle = period <= 3 ? "上元" : period <= 6 ? "中元" : "下元"; const numMap = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"]; return { period, label: `${cycle}${numMap[period]}運` }; }
+    function getDynamicStatus(starIdx, currentPeriod) { const starNum = starIdx + 1, diff = (starNum - currentPeriod + 9) % 9, isGood = (diff === 0 || diff === 1 || diff === 2); let status = "", isDanger = false; if (diff === 0) status = "當旺"; else if (diff === 1) status = "生氣"; else if (diff === 2) status = "進氣"; else if (diff === 8) status = "退氣"; else if (diff === 7) status = "衰氣"; else if (starNum === 5) { status = "大煞"; isDanger = true; } else if (diff === 3 || diff === 4) status = "死氣"; else { status = "煞氣"; isDanger = true; } const meaning = isGood ? stars[starIdx].positive : stars[starIdx].negative; return { text: `${status} - ${meaning}`, isDanger }; }
+    function renderCompass() { const year = parseInt(document.getElementById('yearInput').value) || 2026; let centerStar = (10 - ((year - 1900) % 9)) % 9 || 9, periodInfo = getPeriodInfo(year); document.getElementById('periodLabel').innerText = `(${periodInfo.label})`; const layer = document.getElementById('sectorsLayer'); layer.innerHTML = ''; const cS = stars[centerStar - 1]; layer.innerHTML += `<text x="300" y="285" fill="${cS.c}" font-size="42" text-anchor="middle" font-weight="bold">${cS.n}</text><text x="300" y="315" fill="${cS.c}" font-size="18" text-anchor="middle">${cS.name}</text><rect x="255" y="335" width="90" height="26" rx="13" fill="var(--panel-bg)" stroke="var(--gold)" opacity="0.8" onclick="toggleView()"/><text x="300" y="353" fill="var(--gold)" font-size="14" text-anchor="middle" font-weight="bold">${state.mode === 'compass' ? '切換底圖' : '切換圓盤'}</text>`; for (let i = 0; i < 8; i++) { let angle = i * 45, rad = (angle - 22.5) * Math.PI / 180; layer.innerHTML += `<line x1="${300+80*Math.sin(rad)}" y1="${300-80*Math.cos(rad)}" x2="${300+280*Math.sin(rad)}" y2="${300-280*Math.cos(rad)}" stroke="var(--border)" stroke-width="1.5"/>`; let starNum = (centerStar + offsets[i] - 1) % 9 + 1; const sD = stars[starNum - 1], status = getDynamicStatus(starNum - 1, periodInfo.period); layer.innerHTML += `<g transform="rotate(${angle}, 300, 300)"><text x="300" y="46" fill="${status.isDanger ? 'var(--red)' : 'var(--gold)'}" font-size="14" text-anchor="middle" font-weight="${status.isDanger ? 'bold' : 'normal'}">[ ${status.text} ]</text><text x="300" y="85" fill="var(--gold)" font-size="18" text-anchor="middle" font-weight="bold">${dirs[i]}</text><text x="300" y="145" fill="${sD.c}" font-size="56" text-anchor="middle" font-weight="bold">${sD.n}</text><text x="300" y="190" fill="${sD.c}" font-size="20" text-anchor="middle" font-weight="bold">${sD.name}</text></g>`; } }
 
     function handleImage(e) {
         if (!e.target.files[0]) return;
         const reader = new FileReader();
         reader.onload = (event) => {
             const img = document.getElementById('floorPlan');
-            img.src = event.target.result; img.style.display = 'block';
-            state.map = { x: 0, y: 0, scale: 1, rot: 0 };
-            if(state.mode === 'compass') toggleView(); else updateMap();
+            // 必須在圖片載入完成後才能讀取其原始寬高
+            img.onload = function() {
+                const ws = document.getElementById('workspace');
+                const wsW = ws.clientWidth;
+                const wsH = ws.clientHeight;
+                const imgW = img.naturalWidth;
+                const imgH = img.naturalHeight;
+
+                // 核心自適應縮放演算法 (Fit 模式)
+                // 計算能完整容納圖片的最大縮放比例，並預留 5% 邊距
+                const scale = Math.min(wsW / imgW, wsH / imgH) * 0.95;
+
+                // 將坐標強制居中 (x=0, y=0)，並套用自適應縮放
+                state.map = { x: 0, y: 0, scale: scale, rot: 0 };
+                updateMap();
+                if(state.mode === 'compass') toggleView(); 
+            };
+            img.src = event.target.result; 
+            img.style.display = 'block';
         };
         reader.readAsDataURL(e.target.files[0]);
     }
+
     function clearMap() { const img = document.getElementById('floorPlan'); img.src = ''; img.style.display = 'none'; document.getElementById('fileInput').value = ''; state.map = { x: 0, y: 0, scale: 1, rot: 0 }; }
-    function updateMap() { document.getElementById('floorPlan').style.transform = `translate(calc(-50% + ${state.map.x}px), calc(-50% + ${state.map.y}px)) rotate(${state.map.rot}deg) scale(${state.map.scale})`; }
+    
+    function updateMap() { 
+        // CSS 配合 CSS: position:absolute; left:50%; top:50%;
+        document.getElementById('floorPlan').style.transform = `translate(calc(-50% + ${state.map.x}px), calc(-50% + ${state.map.y}px)) rotate(${state.map.rot}deg) scale(${state.map.scale})`; 
+    }
 
     const ws = document.getElementById('workspace');
     let pointers = [], initialPinchDist = null, initialPinchAngle = null, initialMapScale = 1, initialMapRot = 0, isClick = false;
-    ws.addEventListener('pointerdown', (e) => {
+    ws.addEventListener('pointerdown', e => {
         ws.setPointerCapture(e.pointerId); pointers.push(e); isClick = true;
         if (pointers.length === 1) {
             state.lastX = e.clientX; state.lastY = e.clientY;
@@ -286,12 +188,11 @@
             else if (e.pointerType === 'touch') { initialCompassScale = state.compassScale; }
         }
     });
-    ws.addEventListener('pointermove', (e) => {
+    ws.addEventListener('pointermove', e => {
         const index = pointers.findIndex(p => p.pointerId === e.pointerId); if (index !== -1) pointers[index] = e;
         if (pointers.length === 1) {
             if (Math.hypot(e.clientX - state.lastX, e.clientY - state.lastY) > 5) isClick = false;
             const rect = ws.getBoundingClientRect(), cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
-            
             if (state.mode === 'compass') { 
                 if (isAutoNorth) return;
                 state.compassRot = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI - state.startAngle; 
@@ -308,16 +209,9 @@
             else if (e.pointerType === 'touch') { state.compassScale = Math.max(0.5, Math.min(3, initialCompassScale * (dist / initialPinchDist))); document.getElementById('compassSvg').style.transform = `translateY(-8vh) scale(${state.compassScale})`; }
         }
     });
-    const removePointer = (e) => {
-        if (isClick && pointers.length === 1) {
-            const rect = ws.getBoundingClientRect(), cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
-            if (Math.hypot(e.clientX - cx, e.clientY - cy) <= 80 * (document.getElementById('compassSvg').getBoundingClientRect().width / 600)) toggleView();
-        }
-        pointers = pointers.filter(p => p.pointerId !== e.pointerId); if (ws.hasPointerCapture(e.pointerId)) ws.releasePointerCapture(e.pointerId);
-    };
+    const removePointer = e => { if (isClick && pointers.length === 1) { const rect = ws.getBoundingClientRect(), cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2; if (Math.hypot(e.clientX - cx, e.clientY - cy) <= 80 * (document.getElementById('compassSvg').getBoundingClientRect().width / 600)) toggleView(); } pointers = pointers.filter(p => p.pointerId !== e.pointerId); if (ws.hasPointerCapture(e.pointerId)) ws.releasePointerCapture(e.pointerId); };
     ws.addEventListener('pointerup', removePointer); ws.addEventListener('pointercancel', removePointer);
-    ws.addEventListener('wheel', (e) => { e.preventDefault(); if (state.mode === 'map') { state.map.scale *= (e.deltaY > 0 ? 0.95 : 1.05); updateMap(); } }, { passive: false });
-    
+    ws.addEventListener('wheel', e => { e.preventDefault(); if (state.mode === 'map') { state.map.scale *= (e.deltaY > 0 ? 0.95 : 1.05); updateMap(); } }, { passive: false });
     renderCompass();
 </script>
 </body>
