@@ -10,7 +10,6 @@
             --text: #ffffff; --water: #6eb5f9; --metal: #e6e6e6; --earth: #cca45e;
             --border: rgba(245, 199, 103, 0.8);
             --panel-bg: rgba(15, 14, 12, 0.85);
-            /* 大幅降低圓盤底色不透明度，確保重疊對照清楚 */
             --ring-bg: rgba(15, 14, 12, 0.4); 
             --text-glow: 0px 0px 5px rgba(0,0,0,0.9);
             --info-bg: rgba(255, 255, 255, 0.05);
@@ -114,15 +113,16 @@
 
     function renderOuterRing() {
         const layer = document.getElementById('outerRingLayer');
-        const innerR = 265, outerR = 345, labelR = 305;
-        let html = `<circle cx="300" cy="300" r="${outerR}" fill="var(--ring-bg)" stroke="var(--gold)" stroke-width="2"/><circle cx="300" cy="300" r="${innerR}" fill="transparent" stroke="var(--gold)" stroke-width="1"/>`;
+        // V4.4 壓縮高度：向外推並縮小寬度
+        const innerR = 295, outerR = 340, labelR = 317.5; 
+        let html = `<circle cx="300" cy="300" r="${outerR}" fill="var(--ring-bg)" stroke="var(--gold)" stroke-width="1.5"/><circle cx="300" cy="300" r="${innerR}" fill="transparent" stroke="var(--gold)" stroke-width="1"/>`;
         for (let i = 0; i < 24; i++) {
             const angleDeg = i * 15;
             const rad = (angleDeg - 7.5) * Math.PI / 180;
             html += `<line x1="${300 + innerR * Math.sin(rad)}" y1="${300 - innerR * Math.cos(rad)}" x2="${300 + outerR * Math.sin(rad)}" y2="${300 - outerR * Math.cos(rad)}" stroke="var(--border)" stroke-width="0.8"/>`;
             const name = twentyFourMountains[i];
             const tx = 300 + labelR * Math.sin(angleDeg * Math.PI / 180), ty = 300 - labelR * Math.cos(angleDeg * Math.PI / 180);
-            html += `<text x="${tx}" y="${ty}" fill="${mountainColors[name]}" font-size="18" text-anchor="middle" dominant-baseline="middle" font-weight="bold" transform="rotate(${angleDeg}, ${tx}, ${ty})">${name}</text>`;
+            html += `<text x="${tx}" y="${ty}" fill="${mountainColors[name]}" font-size="16" text-anchor="middle" dominant-baseline="middle" font-weight="bold" transform="rotate(${angleDeg}, ${tx}, ${ty})">${name}</text>`;
         }
         layer.innerHTML = html;
     }
@@ -139,7 +139,6 @@
         state.mode = state.mode === 'compass' ? 'map' : 'compass';
         const compass = document.getElementById('compassSvg');
         const map = document.getElementById('floorPlan');
-        // 切換透明度配比，讓對照更清楚
         if (state.mode === 'map') {
             compass.style.opacity = "0.2"; map.style.opacity = "1";
         } else {
@@ -180,11 +179,12 @@
             let status = ["當旺","生氣","進氣","死氣","死氣","煞氣","煞氣","衰氣","退氣"][diff];
             if(starNum === 5) status = "大煞";
             let isDanger = (status==="大煞"||status==="煞氣");
+            
             layer.innerHTML += `<g transform="rotate(${angle}, 300, 300)">
-                <text x="300" y="68" fill="${isDanger?'var(--red)':'var(--gold)'}" font-size="11" text-anchor="middle">[ ${status} - ${isDanger?sD.negative:sD.positive} ]</text>
-                <text x="300" y="115" fill="var(--gold)" font-size="15" text-anchor="middle" font-weight="bold">${dirs[i]}</text>
-                <text x="300" y="172" fill="${sD.c}" font-size="52" text-anchor="middle" font-weight="bold">${sD.n}</text>
-                <text x="300" y="208" fill="${sD.c}" font-size="17" text-anchor="middle" font-weight="bold">${sD.name}</text>
+                <text x="300" y="72" fill="${isDanger?'var(--red)':'var(--gold)'}" font-size="13" text-anchor="middle" font-weight="bold">[ ${status} - ${isDanger?sD.negative:sD.positive} ]</text>
+                <text x="300" y="115" fill="var(--gold)" font-size="13" text-anchor="middle" font-weight="bold" opacity="0.8">${dirs[i]}</text>
+                <text x="300" y="170" fill="${sD.c}" font-size="46" text-anchor="middle" font-weight="bold">${sD.n}</text>
+                <text x="300" y="205" fill="${sD.c}" font-size="14" text-anchor="middle" font-weight="bold">${sD.name}</text>
             </g>`;
         }
     }
@@ -205,13 +205,14 @@
         state.downDist = Math.hypot(svgP.x - 300, svgP.y - 300);
 
         if (state.mode === 'compass') {
-            state.dragTarget = state.downDist > 255 ? 'outer' : 'inner';
+            // 判定邊界調整至 275px，保留內圈與外圈之間的緩衝感
+            state.dragTarget = state.downDist > 275 ? 'outer' : 'inner';
             state.startAngle = currentAngle;
             state.initialRot = (state.dragTarget === 'outer' ? state.outerRot : state.compassRot);
         } else {
             if (state.pointers.length === 1) {
                 state.lastX = e.clientX; state.lastY = e.clientY;
-                state.startAngle = currentAngle; // 用於電腦端 Shift+旋轉
+                state.startAngle = currentAngle; 
                 state.initialMapRot = state.map.rot;
             } else if (state.pointers.length === 2) {
                 state.pinchDist = Math.hypot(state.pointers[1].clientX - state.pointers[0].clientX, state.pointers[1].clientY - state.pointers[0].clientY);
@@ -245,7 +246,6 @@
             }
         } else {
             if (state.pointers.length === 1) {
-                // 電腦端操作優化：Shift + 拖拽 = 旋轉底圖
                 if (e.shiftKey) {
                     let delta = currentAngle - state.startAngle;
                     state.map.rot = state.initialMapRot + delta;
